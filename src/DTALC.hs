@@ -1,5 +1,9 @@
 -- Data types à la carte
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module DTALC where
 
@@ -59,7 +63,7 @@ instance (Functor f, Functor g) => Functor (f :+: g) where
 -- foldExp f (In (R (Add ( In (L (Val 10))) (In (L (Val 11))))))
 -- foldExp f (In t) = f $ (foldExp f) <$> (R (Add  (In (L (Val 10))) (In (L (Val 11)))))
 -- foldExp f (In t) = f $ (foldExp f) <$> (L (Val 10))
---					  (L (Val 11)) -- this product is parallelizable, so all products can be?
+--					  (L (Val 11)) -- this product is parallelizable, so all products can be? 
 --  f contains the evaluation, so:
 --  fold removes the `In` prefix
 --  f evaluate the expression
@@ -71,3 +75,56 @@ instance (Functor f, Functor g) => Functor (f :+: g) where
 --Evaluation will always occur first in the end of branchs.
 foldExp :: Functor f => (f a -> a) -> Exp f -> a
 foldExp f (In t) = f $ (foldExp f) <$> t
+
+class Functor f =>
+      Eval f
+  where
+  evalAlgebra :: f Int -> Int
+
+instance Eval Val where
+  evalAlgebra (Val a) = a
+
+-- `a` and `b` already are evaluated
+instance Eval Add where
+  evalAlgebra (Add a b) = a + b
+
+instance (Eval f, Eval g) => Eval (f :+: g) where
+  evalAlgebra (L l) = evalAlgebra l
+  evalAlgebra (R r) = evalAlgebra r
+
+eval0 :: Eval f => Exp f -> Int
+eval0 exp = foldExp evalAlgebra exp
+
+infixl 6 ⊕
+
+inject :: (g :<: f) => g (Exp f) -> Exp f
+inject = In . inj
+
+--  any f who supports Val
+--  Val :<: f
+val :: (Val :<: f) => Int -> Exp f
+val a = inject (Val a)
+
+(⊕) :: (Add :<: f) => Exp f -> Exp f -> Exp f
+x ⊕ y = inject (Add x y)
+
+class (Functor sub, Functor sup) =>
+      sub :<: sup
+  where
+  inj :: sub a -> sup a
+
+-- reflexive
+instance Functor f => f :<: f where
+  inj = id
+
+-- supports  f at left, so the coproduct supports f
+-- Overlaps because of the instance above
+instance {-# OVERLAPS #-} (Functor f, Functor g) => f :<: (f :+: g) where
+  inj = L
+
+-- g supports f, so the coproduct supports f
+instance (Functor f, Functor g, Functor h, f :<: g) => f :<: (h :+: g) where
+  inj = R . inj
+
+injectExample :: Exp (Add :+: Val)
+injectExample = val 8 ⊕ val 5 ⊕ val 10
