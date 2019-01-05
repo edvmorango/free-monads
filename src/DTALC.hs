@@ -165,7 +165,51 @@ instance Render Add where
 
 instance Render Mul where
   render (Mul a a') = show $ (pretty a) ++ " * " ++ (pretty a')
+
 -- Occurs check: cannot construct the infinite type: g ~ f :+: g
 --instance (Render f, Render g) => Render (f :+: g) where
 --  render (L l) = render l
 --  render (R r) = render r
+--
+------------------------------------------------------------------------------
+-- Free monads
+data Term f a
+  = Pure a
+  | Impure (f (Term f a))
+
+-- The left-adjoint grants the structure?
+-- Wants to operate in `a`
+instance Functor f => Functor (Term f) where
+  fmap f (Pure x) = Pure (f x)
+  fmap f (Impure t) = Impure $ fmap (fmap f) t
+
+instance Functor f => Applicative (Term f) where
+  pure x = Pure x
+  f <*> (Impure t) = Impure $ fmap (f <*>) t
+
+instance (Applicative f) => Monad (Term f) where
+  return x = Pure x
+  (Pure x) >>= f = f x
+  (Impure t) >>= f = Impure (fmap (>>= f) t)
+
+data Incr t =
+  Incr Int
+       t
+
+data Recall t =
+  Recall (Int -> t)
+
+injectTerm :: (g :<: f) => g (Term f a) -> Term f a
+injectTerm = Impure . inj
+
+incr :: (Incr :<: f) => Int -> Term f ()
+incr i = injectTerm $ Incr i (Pure ())
+
+recall :: (Recall :<: f) => Term f Int
+recall = injectTerm $ Recall pure
+
+tick :: Term (Recall :+: Incr) Int
+tick = do
+  y <- recall
+  _ <- incr 1
+  return y
