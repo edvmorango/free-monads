@@ -16,9 +16,9 @@ eval :: Expr0 -> Int
 eval (Val0 a) = a
 eval (Add0 a b) = eval a + eval b
 
-render :: Expr0 -> String
-render (Val0 a) = show a
-render (Add0 a b) = show $ render a ++ " + " ++ render b
+render0 :: Expr0 -> String
+render0 (Val0 a) = show a
+render0 (Add0 a b) = show $ render0 a ++ " + " ++ render0 b
 
 ---------------------------
 data Exp f =
@@ -128,3 +128,44 @@ instance (Functor f, Functor g, Functor h, f :<: g) => f :<: (h :+: g) where
 
 injectExample :: Exp (Add :+: Val)
 injectExample = val 8 ⊕ val 5 ⊕ val 10
+
+data Mul x =
+  Mul x
+      x
+
+instance Functor Mul where
+  fmap f (Mul x x') = Mul (f x) (f x')
+
+instance Eval Mul where
+  evalAlgebra (Mul x x') = x * x'
+
+infixl 7 ⊗
+
+(⊗) :: (Mul :<: f) => Exp f -> Exp f -> Exp f
+x ⊗ x' = inject (Mul x x')
+
+injectMulExample :: Exp (Val :+: Mul)
+injectMulExample = (val 2) ⊗ (val 5)
+
+-- Maybe don't work because of overlaps
+--injectMulAddExample :: Exp (Val :+: Mul :+: Add)
+--injectMulAddExample = (val 2) ⊗ (val 5) ⊕ (val 5)
+-----------------------------------------------------
+class Render f where
+  render :: f (Exp f) -> String
+
+pretty :: Render f => Exp f -> String
+pretty (In t) = render t
+
+instance Render Val where
+  render (Val i) = show i
+
+instance Render Add where
+  render (Add a a') = show $ (pretty a) ++ " + " ++ (pretty a')
+
+instance Render Mul where
+  render (Mul a a') = show $ (pretty a) ++ " * " ++ (pretty a')
+-- Occurs check: cannot construct the infinite type: g ~ f :+: g
+--instance (Render f, Render g) => Render (f :+: g) where
+--  render (L l) = render l
+--  render (R r) = render r
